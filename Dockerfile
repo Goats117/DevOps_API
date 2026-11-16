@@ -4,11 +4,9 @@ WORKDIR /app
 # 1. Patch the OS layer
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
-# 2. Patch the global Python layer (fixes CVE-2025-47273)
-RUN pip install --upgrade pip "setuptools>=78.1.1"
-
-# 3. Install the application dependencies
-RUN pip install fastapi uvicorn
+# 2. Purge the vulnerable baked-in package, then cleanly install the secure versions
+RUN pip uninstall -y setuptools && \
+    pip install --no-cache-dir "setuptools>=78.1.1" fastapi uvicorn
 
 COPY main.py .
 EXPOSE 8000
