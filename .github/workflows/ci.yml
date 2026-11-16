@@ -2,24 +2,29 @@ name: Nightly Build, Scan, and Push
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   schedule:
     - cron: '0 0 * * *'
 
-# This permission block is strictly required for OIDC to work
-
+# OIDC requires id-token: write. Declared at top level so it applies to every
+# job and there is one place to audit it.
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-	build-scan-push:
-	runs-on: ubuntu-latest
-	permissions:
-  		id-token: write 
-  		contents: read  
-
+  build-scan-push:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # Diagnostic: the sub claim AWS should see for this run, so the
+      # StringLike condition can be compared against reality in the log.
+      - name: Show expected sub claim
+        run: |
+          echo "dispatch/schedule form: repo:${{ github.repository }}:ref:${{ github.ref }}"
+          echo "push form:            repo:${{ github.repository }}:${{ github.ref }}"
 
       # 1. Ask AWS for a temporary token using our OIDC trust
       - name: Configure AWS Credentials
@@ -27,6 +32,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::887664351213:role/GitHubActions-ECR-Role
           aws-region: us-east-1 # Update if you used a different region
+          debug: true
 
       # 2. Log Docker into your secure AWS ECR vault
       - name: Login to Amazon ECR
@@ -37,7 +43,7 @@ jobs:
       - name: Build Docker Image
         run: docker build -t ${{ steps.login-ecr.outputs.registry }}/devops-api:latest .
 
-      # 4. Scan the image (Fails the build if high vulnerabilities are found)
+      # 4. Scan the image (fails the build if high vulnerabilities are found)
       - name: Run Trivy Security Scanner
         uses: aquasecurity/trivy-action@master
         with:
