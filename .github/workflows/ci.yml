@@ -1,4 +1,4 @@
-name: Nightly Build and Security Scan
+name: Nightly Build, Scan, and Push
 
 on:
   push:
@@ -7,23 +7,46 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+# This permission block is strictly required for OIDC to work
+permissions:
+  id-token: write 
+  contents: read  
+
 jobs:
-  build-and-scan:
+  build-scan-push:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Docker Image
-        run: docker build -t devops-api:latest .
+      # 1. Ask AWS for a temporary token using our OIDC trust
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::887664351213:role/GitHubActions-ECR-Role
+          aws-region: us-east-1 # Update if you used a different region
 
+      # 2. Log Docker into your secure AWS ECR vault
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 3. Build the image, naming it with your ECR URL
+      - name: Build Docker Image
+        run: docker build -t ${{ steps.login-ecr.outputs.registry }}/devops-api:latest .
+
+      # 4. Scan the image (Fails the build if high vulnerabilities are found)
       - name: Run Trivy Security Scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'devops-api:latest'
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/devops-api:latest'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+      # 5. Only if the scan passes, push the secure image to AWS
+      - name: Push to Amazon ECR
+        run: docker push ${{ steps.login-ecr.outputs.registry }}/devops-api:latest
