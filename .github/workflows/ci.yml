@@ -8,13 +8,14 @@ on:
     - cron: '0 0 * * *'
 
 # This permission block is strictly required for OIDC to work
-permissions:
-  id-token: write 
-  contents: read  
+
 
 jobs:
-  build-scan-push:
-    runs-on: ubuntu-latest
+	build-scan-push:
+	runs-on: ubuntu-latest
+	permissions:
+  		id-token: write 
+  		contents: read  
 
     steps:
       - name: Checkout Code
