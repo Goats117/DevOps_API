@@ -1,0 +1,65 @@
+name: Terraform CD - Deploy Infrastructure
+
+on:
+  # Trigger 1: Run automatically after the CI pipeline finishes pushing a clean image
+  workflow_run:
+    workflows: ["Nightly Build, Scan, and Push"]
+    types:
+      - completed
+  # Trigger 2: Run when Terraform files are updated on main
+  push:
+    branches: [main]
+    paths:
+      - 'Terraform/**'
+      - '.github/workflows/cd.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    # Only run if triggered by a direct push OR if the CI workflow succeeded
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    
+    defaults:
+      run:
+        working-directory: ./Terraform
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::887664351213:role/GitHubActions-ECR-Role
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+
+      - name: Terraform Init (Connects to S3 Backend)
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan (Save Deterministic Plan)
+        run: terraform plan -out=tfplan -input=false
+
+      - name: Terraform Apply (Execute Saved Plan)
+        run: terraform apply -auto-approve -input=false tfplan
+
+      - name: Force New ECS Deployment with Latest ECR Image
+        run: |
+          aws ecs update-service \
+            --cluster devops-api-cluster \
+            --service devops-api \
+            --force-new-deployment

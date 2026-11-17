@@ -1,0 +1,6 @@
+# Ignore Terraform local caches, state, and binary plan files
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
