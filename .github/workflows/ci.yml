@@ -53,10 +53,11 @@ jobs:
         run: docker build -t ${{ steps.login-ecr.outputs.registry }}/devops-api:latest .
 
       # 4. Scan the image (fails the build if high vulnerabilities are found)
-      # Pinned to a release tag instead of @master. Bump to the latest tag
-      # (or a commit SHA) when you review it.
+      # Pinned to a release tag instead of @master. Older tags (0.0.1-0.34.2)
+      # were removed after a supply-chain compromise, so use v0.36.0 or newer.
+      # For the strongest pin, swap the tag for the full commit SHA.
       - name: Run Trivy Security Scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ steps.login-ecr.outputs.registry }}/devops-api:latest'
           format: 'table'
