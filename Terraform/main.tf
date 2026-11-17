@@ -7,7 +7,6 @@ terraform {
     }
   }
 
-  # Production Remote State using your Account Regional Namespace (-an) bucket
   backend "s3" {
     bucket       = "devops-api-887664351213-us-east-1-an"
     key          = "prod/terraform.tfstate"
@@ -21,12 +20,12 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Look up your existing ECR repository
+# Look up existing ECR repository
 data "aws_ecr_repository" "app" {
   name = "devops-api"
 }
 
-# 1. Networking Module Call
+# 1. Networking: Public Subnets with Free Internet Gateway (No NAT Gateway needed)
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.0"
@@ -38,7 +37,7 @@ module "vpc" {
   enable_nat_gateway = false
 }
 
-# 2. Compute Module Call (Cluster + Fargate Service)
+# 2. Compute: ECS Fargate Cluster & Service
 module "ecs" {
   source  = "terraform-aws-modules/ecs/aws"
   version = "~> 6.0"
@@ -55,7 +54,6 @@ module "ecs" {
     }
   }
 
-  # Deploys your ECR image onto Fargate
   services = {
     devops-api = {
       cpu    = 256
@@ -64,21 +62,25 @@ module "ecs" {
       assign_public_ip = true
       subnet_ids       = module.vpc.public_subnets
 
-      security_group_rules = {
-        ingress_http = {
-          type        = "ingress"
+      # v6+ Ingress Rules (Inbound port 8000 for FastAPI)
+      security_group_ingress_rules = {
+        fastapi_http = {
+          description = "Allow FastAPI traffic on port 8000"
           from_port   = 8000
           to_port     = 8000
-          protocol    = "tcp"
-          description = "Allow FastAPI traffic on port 8000"
-          cidr_blocks = ["0.0.0.0/0"]
+          ip_protocol = "tcp"
+          cidr_ipv4   = "0.0.0.0/0"
         }
-        egress_all = {
-          type        = "egress"
-          from_port   = 0
-          to_port     = 0
-          protocol    = "-1"
-          cidr_blocks = ["0.0.0.0/0"]
+      }
+
+      # v6+ Egress Rules (Outbound TCP 443 to reach ECR & CloudWatch Logs via IGW)
+      security_group_egress_rules = {
+        https_outbound = {
+          description = "Allow outbound HTTPS to ECR, S3, and CloudWatch Logs"
+          from_port   = 443
+          to_port     = 443
+          ip_protocol = "tcp"
+          cidr_ipv4   = "0.0.0.0/0"
         }
       }
 
